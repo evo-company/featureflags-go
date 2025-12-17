@@ -89,6 +89,12 @@ type Logger interface {
 	Printf(format string, args ...any)
 }
 
+// defaultLogger is a no-op logger used when no logger is provided
+type defaultLogger struct{}
+
+func (l *defaultLogger) Fatalf(format string, args ...any) {}
+func (l *defaultLogger) Printf(format string, args ...any) {}
+
 type FeatureFlags struct {
 	client       *http.Client
 	logger       Logger
@@ -218,16 +224,60 @@ type Defaults struct {
 	Values []Value
 }
 
-// TODO: maybe migrate to Options
+// ClientConfig holds configuration options for the FeatureFlags client
+type ClientConfig struct {
+	variables    []Variable
+	syncInterval time.Duration
+	logger       Logger
+}
+
+// ClientOption is a function that configures a ClientConfig
+type ClientOption func(*ClientConfig)
+
+// WithVariables sets the variables for targeting rules
+func WithVariables(variables []Variable) ClientOption {
+	return func(c *ClientConfig) {
+		c.variables = variables
+	}
+}
+
+// WithSyncInterval sets the interval for syncing flags
+func WithSyncInterval(interval time.Duration) ClientOption {
+	return func(c *ClientConfig) {
+		c.syncInterval = interval
+	}
+}
+
+// WithLogger sets the logger for the client
+func WithLogger(logger Logger) ClientOption {
+	return func(c *ClientConfig) {
+		c.logger = logger
+	}
+}
+
 func MakeClient(
 	ctx context.Context,
 	httpAddr string,
 	project string,
 	defaults Defaults,
-	variables []Variable,
-	syncInterval time.Duration,
-	logger Logger,
+	opts ...ClientOption,
 ) (*FeatureFlags, error) {
+	// Initialize config with defaults
+	config := &ClientConfig{
+		syncInterval: defaultSyncInterval,
+		logger:       nil, // Will use a default logger if nil
+	}
+
+	// Apply options
+	for _, opt := range opts {
+		opt(config)
+	}
+
+	// Use default logger if none provided
+	if config.logger == nil {
+		config.logger = &defaultLogger{}
+	}
+
 	c := &http.Client{}
 	flagsMap := make(map[string]FlagState, len(defaults.Flags))
 	flagNames := make([]string, len(defaults.Flags))
@@ -251,23 +301,23 @@ func MakeClient(
 		valueNames[i] = value.Name
 	}
 
-	if syncInterval <= 0 {
-		syncInterval = defaultSyncInterval
+	if config.syncInterval <= 0 {
+		config.syncInterval = defaultSyncInterval
 	}
 
 	flagsClient := FeatureFlags{
 		client:    c,
 		project:   project,
 		httpAddr:  httpAddr,
-		variables: variables,
+		variables: config.variables,
 		state: State{
 			flagState:  flagsMap,
 			flagNames:  flagNames,
 			valueState: valuesMap,
 			valueNames: valueNames,
 		},
-		logger:       logger,
-		syncInterval: syncInterval,
+		logger:       config.logger,
+		syncInterval: config.syncInterval,
 	}
 	// TODO: make preload here
 	// TODO: preload passes variables to server

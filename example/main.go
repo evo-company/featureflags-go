@@ -44,9 +44,9 @@ func main() {
 		host,
 		"test.test",
 		defaults,
-		variables,
-		10*time.Second,
-		log.Default(),
+		featureflags.WithVariables(variables),
+		featureflags.WithSyncInterval(10*time.Second),
+		featureflags.WithLogger(log.Default()),
 	)
 	if err != nil {
 		panic(err.Error())

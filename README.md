@@ -17,6 +17,35 @@ go get github.com/evo-company/featureflags-go
 
 ### Usage
 
+The client uses the functional options pattern for flexible configuration. The `httpAddr`, `project`, and `defaults` parameters are required, while other options are optional.
+
+#### Available Options
+
+- `WithVariables(variables []Variable)` - Set variables for targeting rules
+- `WithSyncInterval(interval time.Duration)` - Set sync interval (default: 10 seconds)
+- `WithLogger(logger Logger)` - Set a custom logger (default: no-op logger)
+
+#### Quick Start
+
+Minimal example with only required parameters:
+
+```go
+defaults := featureflags.Defaults{
+    Flags: []featureflags.Flag{
+        {Name: "MY_FLAG", Enabled: false},
+    },
+}
+
+client, err := featureflags.MakeClient(
+    context.Background(),
+    "http://your-flags-service",
+    "my-project",
+    defaults,
+)
+```
+
+#### Comprehensive Example
+
 Here's a comprehensive example demonstrating how to initialize the client, define defaults and variables, and retrieve flag and value states:
 
 ```go
@@ -60,10 +89,10 @@ func main() {
   context.Background(),
   "http://your-flags-service", // Your HTTP feature flags service address
   "my-project",               // Your project name
-  defaults,
-  variables,
-  10*time.Second,             // Sync interval as time.Duration
-  log.Default(),              // Logger
+  defaults,                   // Default flags and values
+  featureflags.WithVariables(variables),
+  featureflags.WithSyncInterval(10*time.Second),
+  featureflags.WithLogger(log.Default()),
  )
  if err != nil {
   log.Fatalf("Failed to create feature flags client: %v", err)
