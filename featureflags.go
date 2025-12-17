@@ -162,6 +162,25 @@ type SyncFlagsResponse struct {
 	Values  []ValueResponse `json:"values"`
 }
 
+type ValueInput struct {
+	Name  string      `json:"name"`
+	Value interface{} `json:"value"`
+}
+
+type LoadFlagsRequest struct {
+	Project   string        `json:"project"`
+	Version   int           `json:"version"`
+	Variables []Variable    `json:"variables"`
+	Flags     []string      `json:"flags"`
+	Values    []ValueInput  `json:"values"`
+}
+
+type LoadFlagsResponse struct {
+	Version int             `json:"version"`
+	Flags   []FlagResponse  `json:"flags"`
+	Values  []ValueResponse `json:"values"`
+}
+
 func (flags *FeatureFlags) SyncRequest() (*SyncFlagsResponse, error) {
 	req := SyncFlagsRequest{
 		Project: flags.project,
@@ -197,11 +216,76 @@ func (flags *FeatureFlags) SyncRequest() (*SyncFlagsResponse, error) {
 	return &reply, nil
 }
 
+// LoadRequest sends a load request to the feature flags server.
+// This creates a project on the server if it doesn't exist, initializes flags, values, and variables,
+// and syncs the current project state from server to client.
+func (flags *FeatureFlags) LoadRequest() (*LoadFlagsResponse, error) {
+	// Build value inputs from current state
+	valueInputs := make([]ValueInput, 0, len(flags.state.valueState))
+	for _, valueState := range flags.state.valueState {
+		valueInputs = append(valueInputs, ValueInput{
+			Name:  valueState.Name,
+			Value: valueState.Value,
+		})
+	}
+
+	req := LoadFlagsRequest{
+		Project:   flags.project,
+		Version:   flags.state.version,
+		Variables: flags.variables,
+		Flags:     flags.state.flagNames,
+		Values:    valueInputs,
+	}
+
+	body, err := json.Marshal(req)
+	if err != nil {
+		return nil, err
+	}
+
+	url := fmt.Sprintf("%s/flags/load", flags.httpAddr)
+	res, err := flags.client.Post(
+		url, "application/json", bytes.NewBuffer(body),
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer res.Body.Close()
+
+	if res.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("http request to %s failed with status: %s", url, res.Status)
+	}
+
+	var reply LoadFlagsResponse
+	err = json.NewDecoder(res.Body).Decode(&reply)
+	if err != nil {
+		return nil, err
+	}
+
+	return &reply, nil
+}
+
+var ErrorCantLoadFlags = errors.New("can not load flags")
+
+// Load initializes the project on the server by creating it if it doesn't exist,
+// creating and initializing flags, values, and variables, and syncing the current
+// project state from the server to the client.
+func (flags *FeatureFlags) Load() error {
+	res, err := flags.LoadRequest()
+	if err != nil {
+		return errors.Join(ErrorCantLoadFlags, err)
+	}
+
+	flags.state.Update(res.Version, res.Flags, res.Values)
+	return nil
+}
+
 type VariableType int
 
 const (
-	TypeNumber VariableType = iota
-	TypeString
+	TypeString VariableType = iota + 1
+	TypeNumber
+	TypeTimestamp
+	TypeSet
 )
 
 type Variable struct {
@@ -319,9 +403,10 @@ func MakeClient(
 		logger:       config.logger,
 		syncInterval: config.syncInterval,
 	}
-	// TODO: make preload here
-	// TODO: preload passes variables to server
-	err := flagsClient.Sync()
+	// Load will create a project on the server if it doesn't exist,
+	// create and initialize flags, values and variables, and will sync
+	// current project state from server to client
+	err := flagsClient.Load()
 	if err != nil {
 		return nil, err
 	}
