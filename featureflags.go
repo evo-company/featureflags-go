@@ -30,8 +30,10 @@ type FlagState struct {
 }
 
 type ValueState struct {
-	Name  string
-	Value interface{}
+	Name         string
+	Value        interface{} // current value (from server or default)
+	DefaultValue interface{} // original default value
+	IsOverridden bool        // true if value was set by server
 }
 
 type State struct {
@@ -58,8 +60,6 @@ func (state *State) ValueState(name string) interface{} {
 	if foundValue {
 		return value.Value
 	}
-	// TODO: teach in docs that this must be handled as if not nil
-	// TODO: or return some deafault ?
 	return nil
 }
 
@@ -77,9 +77,18 @@ func (state *State) Update(version int, flags []FlagResponse, values []ValueResp
 	}
 
 	for _, value := range values {
+		// Preserve the default value if it exists
+		existingState, exists := state.valueState[value.Name]
+		defaultVal := interface{}(nil)
+		if exists {
+			defaultVal = existingState.DefaultValue
+		}
+
 		state.valueState[value.Name] = ValueState{
-			Name:  value.Name,
-			Value: value.Value, // decoded on use
+			Name:         value.Name,
+			Value:        value.Value,
+			DefaultValue: defaultVal,
+			IsOverridden: true, // Value came from server
 		}
 	}
 }
@@ -111,6 +120,108 @@ func (flags *FeatureFlags) Get(name string) bool {
 
 func (flags *FeatureFlags) GetValue(name string) interface{} {
 	return flags.state.ValueState(name)
+}
+
+// GetValueInt returns the value as an int. Returns an error if the value doesn't exist
+// or cannot be cast to int.
+func (flags *FeatureFlags) GetValueInt(name string) (int, error) {
+	value := flags.state.ValueState(name)
+	if value == nil {
+		return 0, fmt.Errorf("value %s not found", name)
+	}
+
+	// Try to cast to int
+	if intVal, ok := value.(int); ok {
+		return intVal, nil
+	}
+
+	// Try to cast to float64 (JSON numbers are decoded as float64)
+	if floatVal, ok := value.(float64); ok {
+		return int(floatVal), nil
+	}
+
+	return 0, fmt.Errorf("value %s cannot be cast to int (type: %T)", name, value)
+}
+
+// MustGetValueInt returns the value as an int. If the value cannot be cast to int,
+// it returns the default value. Panics if the value key doesn't exist in the map
+// (which indicates a programming error - asking for a value that was never defined).
+func (flags *FeatureFlags) MustGetValueInt(name string) int {
+	valueState, exists := flags.state.valueState[name]
+	if !exists {
+		panic(fmt.Sprintf("value %s was never defined in defaults - this is a programming error", name))
+	}
+
+	value := valueState.Value
+
+	// Try to cast current value to int
+	if intVal, ok := value.(int); ok {
+		return intVal
+	}
+
+	// Try to cast to float64 (JSON numbers are decoded as float64)
+	if floatVal, ok := value.(float64); ok {
+		return int(floatVal)
+	}
+
+	// Fall back to default value
+	if defaultInt, ok := valueState.DefaultValue.(int); ok {
+		flags.logger.Printf("Value %s cannot be cast to int, using default %d", name, defaultInt)
+		return defaultInt
+	}
+
+	// This should never happen if defaults were properly initialized
+	panic(fmt.Sprintf("value %s has no valid int default - this is a programming error", name))
+}
+
+// GetValueString returns the value as a string. Returns an error if the value doesn't exist
+// or cannot be cast to string.
+func (flags *FeatureFlags) GetValueString(name string) (string, error) {
+	value := flags.state.ValueState(name)
+	if value == nil {
+		return "", fmt.Errorf("value %s not found", name)
+	}
+
+	// Try to cast to string
+	if strVal, ok := value.(string); ok {
+		return strVal, nil
+	}
+
+	return "", fmt.Errorf("value %s cannot be cast to string (type: %T)", name, value)
+}
+
+// MustGetValueString returns the value as a string. If the value cannot be cast to string,
+// it returns the default value. Panics if the value key doesn't exist in the map
+// (which indicates a programming error - asking for a value that was never defined).
+func (flags *FeatureFlags) MustGetValueString(name string) string {
+	valueState, exists := flags.state.valueState[name]
+	if !exists {
+		panic(fmt.Sprintf("value %s was never defined in defaults - this is a programming error", name))
+	}
+
+	value := valueState.Value
+
+	// Try to cast current value to string
+	if strVal, ok := value.(string); ok {
+		return strVal
+	}
+
+	// Fall back to default value
+	if defaultStr, ok := valueState.DefaultValue.(string); ok {
+		flags.logger.Printf("Value %s cannot be cast to string, using default %s", name, defaultStr)
+		return defaultStr
+	}
+
+	// This should never happen if defaults were properly initialized
+	panic(fmt.Sprintf("value %s has no valid string default - this is a programming error", name))
+}
+
+// IsValueOverridden returns true if the value was set by the server, false if it's using the default.
+func (flags *FeatureFlags) IsValueOverridden(name string) bool {
+	if valueState, exists := flags.state.valueState[name]; exists {
+		return valueState.IsOverridden
+	}
+	return false
 }
 
 func (flags *FeatureFlags) SyncLoop() {
@@ -168,11 +279,11 @@ type ValueInput struct {
 }
 
 type LoadFlagsRequest struct {
-	Project   string        `json:"project"`
-	Version   int           `json:"version"`
-	Variables []Variable    `json:"variables"`
-	Flags     []string      `json:"flags"`
-	Values    []ValueInput  `json:"values"`
+	Project   string       `json:"project"`
+	Version   int          `json:"version"`
+	Variables []Variable   `json:"variables"`
+	Flags     []string     `json:"flags"`
+	Values    []ValueInput `json:"values"`
 }
 
 type LoadFlagsResponse struct {
@@ -282,15 +393,15 @@ func (flags *FeatureFlags) Load() error {
 type VariableType int
 
 const (
-	TypeString VariableType = iota + 1
-	TypeNumber
-	TypeTimestamp
-	TypeSet
+	TypeString    VariableType = iota + 1 // 1
+	TypeNumber                            // 2
+	TypeTimestamp                         // 3
+	TypeSet                               // 4
 )
 
 type Variable struct {
-	Name string
-	Type VariableType
+	Name string       `json:"name"`
+	Type VariableType `json:"type"`
 }
 
 type Flag struct { // TODO: do we need json tags here ?
@@ -350,6 +461,7 @@ func MakeClient(
 	config := &ClientConfig{
 		syncInterval: defaultSyncInterval,
 		logger:       nil, // Will use a default logger if nil
+		variables:    make([]Variable, 0),
 	}
 
 	// Apply options
@@ -362,7 +474,7 @@ func MakeClient(
 		config.logger = &defaultLogger{}
 	}
 
-	c := &http.Client{}
+	client := &http.Client{}
 	flagsMap := make(map[string]FlagState, len(defaults.Flags))
 	flagNames := make([]string, len(defaults.Flags))
 	valuesMap := make(map[string]ValueState, len(defaults.Values))
@@ -378,9 +490,10 @@ func MakeClient(
 
 	for i, value := range defaults.Values {
 		valuesMap[value.Name] = ValueState{
-			Name:  value.Name,
-			Value: nil, // This is a default value
-			// TODO: maybe default must be a separate field
+			Name:         value.Name,
+			Value:        value.Value,
+			DefaultValue: value.Value,
+			IsOverridden: false,
 		}
 		valueNames[i] = value.Name
 	}
@@ -390,7 +503,7 @@ func MakeClient(
 	}
 
 	flagsClient := FeatureFlags{
-		client:    c,
+		client:    client,
 		project:   project,
 		httpAddr:  httpAddr,
 		variables: config.variables,

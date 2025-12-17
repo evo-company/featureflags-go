@@ -25,6 +25,42 @@ The client uses the functional options pattern for flexible configuration. The `
 - `WithSyncInterval(interval time.Duration)` - Set sync interval (default: 10 seconds)
 - `WithLogger(logger Logger)` - Set a custom logger (default: no-op logger)
 
+#### Working with Values
+
+Values allow you to store configuration settings (strings, integers, etc.) that can be overridden by the server.
+
+**Default Values**: When you initialize the client, you provide default values:
+```go
+defaults := featureflags.Defaults{
+    Values: []featureflags.Value{
+        {Name: "http_timeout", Value: 30},      // Default timeout: 30 seconds
+        {Name: "api_endpoint", Value: "https://api.example.com"},
+    },
+}
+```
+
+**Server Overrides**: The server can override these defaults. For example, it might change `http_timeout` from 30 to 50.
+
+**Retrieving Values**: Two approaches for type-safe value retrieval:
+
+**1. Error-returning getters** (recommended when you need to handle failures):
+- `GetValueInt(name string) (int, error)` - Returns error if not found or wrong type
+- `GetValueString(name string) (string, error)` - Returns error if not found or wrong type
+
+**2. Must getters** (recommended when you want guaranteed defaults):
+- `MustGetValueInt(name string) int` - Returns value or default, panics if key never defined
+- `MustGetValueString(name string) string` - Returns value or default, panics if key never defined
+
+**Other methods**:
+- `GetValue(name string) interface{}` - Returns raw value (requires manual type casting)
+- `IsValueOverridden(name string) bool` - Check if server overrode the default
+
+**Safety guarantees**:
+- `GetValue*` methods return errors instead of zero values (preventing dangerous defaults like 0 timeout)
+- `MustGetValue*` methods guarantee a value is returned (either current or default)
+- `MustGetValue*` panics only on programming errors (requesting undefined keys)
+- Type mismatches are logged and fall back to defaults in Must* versions
+
 #### Quick Start
 
 Minimal example with only required parameters:
@@ -112,18 +148,34 @@ func main() {
  }
 
  // 5. Get value state
- welcomeMessage := flagsClient.GetValue("WELCOME_MESSAGE")
- if msg, ok := welcomeMessage.(string); ok {
-  println("Welcome Message:", msg)
+
+ // Option 1: Must getters - guaranteed to return a value (current or default)
+ // Best for production code where you want safe fallbacks
+ welcomeMessage := flagsClient.MustGetValueString("WELCOME_MESSAGE")
+ println("Welcome Message:", welcomeMessage)
+
+ maxUsers := flagsClient.MustGetValueInt("MAX_USERS")
+ println("Maximum Users:", maxUsers)
+
+ // Option 2: Error-returning getters - handle errors explicitly
+ // Best when you need to know if a value fetch failed
+ if timeout, err := flagsClient.GetValueInt("HTTP_TIMEOUT"); err != nil {
+  log.Printf("Failed to get HTTP_TIMEOUT: %v", err)
  } else {
-  println("Welcome Message not found or not a string.")
+  println("HTTP Timeout:", timeout)
  }
 
- maxUsers := flagsClient.GetValue("MAX_USERS")
- if count, ok := maxUsers.(int); ok {
-  println("Maximum Users:", count)
+ // Check if a value was overridden by the server
+ if flagsClient.IsValueOverridden("MAX_USERS") {
+  println("MAX_USERS was overridden by the server")
  } else {
-  println("Maximum Users not found or not an integer.")
+  println("MAX_USERS is using the default value")
+ }
+
+ // Generic getter (returns interface{} - requires manual type casting)
+ rawValue := flagsClient.GetValue("WELCOME_MESSAGE")
+ if msg, ok := rawValue.(string); ok {
+  println("Raw value:", msg)
  }
 
  // The client will continue to sync flags in a background loop.
