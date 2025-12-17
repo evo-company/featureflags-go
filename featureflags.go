@@ -404,7 +404,7 @@ type Variable struct {
 	Type VariableType `json:"type"`
 }
 
-type Flag struct { // TODO: do we need json tags here ?
+type Flag struct {
 	Name    string `json:"name"`
 	Enabled bool   `json:"enabled"`
 }
