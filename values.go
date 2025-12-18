@@ -19,12 +19,17 @@ func (state *State) ValueState(name string) interface{} {
 }
 
 func (flags *FeatureFlags) GetValue(name string) interface{} {
+	flags.mu.RLock()
+	defer flags.mu.RUnlock()
 	return flags.state.ValueState(name)
 }
 
 // GetValueInt returns the value as an int. Returns an error if the value doesn't exist
 // or cannot be cast to int.
 func (flags *FeatureFlags) GetValueInt(name string) (int, error) {
+	flags.mu.RLock()
+	defer flags.mu.RUnlock()
+
 	value := flags.state.ValueState(name)
 	if value == nil {
 		return 0, fmt.Errorf("value %s not found", name)
@@ -47,6 +52,9 @@ func (flags *FeatureFlags) GetValueInt(name string) (int, error) {
 // it returns the default value. Panics if the value key doesn't exist in the map
 // (which indicates a programming error - asking for a value that was never defined).
 func (flags *FeatureFlags) MustGetValueInt(name string) int {
+	flags.mu.RLock()
+	defer flags.mu.RUnlock()
+
 	valueState, exists := flags.state.valueState[name]
 	if !exists {
 		panic(fmt.Sprintf("value %s was never defined in defaults - this is a programming error", name))
@@ -77,6 +85,9 @@ func (flags *FeatureFlags) MustGetValueInt(name string) int {
 // GetValueString returns the value as a string. Returns an error if the value doesn't exist
 // or cannot be cast to string.
 func (flags *FeatureFlags) GetValueString(name string) (string, error) {
+	flags.mu.RLock()
+	defer flags.mu.RUnlock()
+
 	value := flags.state.ValueState(name)
 	if value == nil {
 		return "", fmt.Errorf("value %s not found", name)
@@ -94,6 +105,9 @@ func (flags *FeatureFlags) GetValueString(name string) (string, error) {
 // it returns the default value. Panics if the value key doesn't exist in the map
 // (which indicates a programming error - asking for a value that was never defined).
 func (flags *FeatureFlags) MustGetValueString(name string) string {
+	flags.mu.RLock()
+	defer flags.mu.RUnlock()
+
 	valueState, exists := flags.state.valueState[name]
 	if !exists {
 		panic(fmt.Sprintf("value %s was never defined in defaults - this is a programming error", name))
@@ -118,6 +132,9 @@ func (flags *FeatureFlags) MustGetValueString(name string) string {
 
 // IsValueOverridden returns true if the value was set by the server, false if it's using the default.
 func (flags *FeatureFlags) IsValueOverridden(name string) bool {
+	flags.mu.RLock()
+	defer flags.mu.RUnlock()
+
 	if valueState, exists := flags.state.valueState[name]; exists {
 		return valueState.IsOverridden
 	}

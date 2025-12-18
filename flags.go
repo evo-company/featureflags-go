@@ -26,6 +26,8 @@ func (state *State) FlagState(name string) bool {
 }
 
 func (flags *FeatureFlags) Get(name string) bool {
+	flags.mu.RLock()
+	defer flags.mu.RUnlock()
 	return flags.state.FlagState(name)
 }
 
