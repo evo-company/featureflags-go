@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"sync"
 	"time"
 )
 
@@ -71,6 +72,7 @@ type FeatureFlags struct {
 	variables    []Variable
 	httpAddr     string
 	syncInterval time.Duration
+	mu           sync.RWMutex
 }
 
 func (flags *FeatureFlags) SyncLoop() {
@@ -93,6 +95,8 @@ func (flags *FeatureFlags) Sync() error {
 		return errors.Join(ErrorCantSyncFlags, err)
 	}
 
+	flags.mu.Lock()
+	defer flags.mu.Unlock()
 	flags.state.Update(res.Version, res.Flags, res.Values)
 	return nil
 }
@@ -218,6 +222,8 @@ func (flags *FeatureFlags) Load() error {
 		return errors.Join(ErrorCantLoadFlags, err)
 	}
 
+	flags.mu.Lock()
+	defer flags.mu.Unlock()
 	flags.state.Update(res.Version, res.Flags, res.Values)
 	return nil
 }
