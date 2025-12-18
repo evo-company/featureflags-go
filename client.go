@@ -12,7 +12,8 @@ import (
 )
 
 const (
-	defaultSyncInterval = 10 * time.Second
+	defaultSyncInterval   = 10 * time.Second
+	defaultRequestTimeout = 30 * time.Second
 )
 
 type State struct {
@@ -249,9 +250,10 @@ type Defaults struct {
 
 // ClientConfig holds configuration options for the FeatureFlags client
 type ClientConfig struct {
-	variables    []Variable
-	syncInterval time.Duration
-	logger       Logger
+	variables      []Variable
+	syncInterval   time.Duration
+	requestTimeout time.Duration
+	logger         Logger
 }
 
 // ClientOption is a function that configures a ClientConfig
@@ -278,6 +280,31 @@ func WithLogger(logger Logger) ClientOption {
 	}
 }
 
+// WithRequestTimeout sets the timeout for HTTP requests to the feature flags server.
+// This timeout applies to all HTTP operations including Load and Sync requests.
+//
+// Default value: 30 seconds (defaultRequestTimeout)
+//
+// Special cases:
+//   - timeout <= 0: Uses the default timeout of 30 seconds
+//   - timeout = 0 specifically means no timeout in http.Client, but this implementation
+//     will override it with the default to prevent indefinite blocking
+//
+// Example:
+//
+//	client, err := featureflags.MakeClient(
+//	    ctx,
+//	    "http://localhost:8080",
+//	    "my-project",
+//	    defaults,
+//	    featureflags.WithRequestTimeout(5 * time.Second), // 5 second timeout
+//	)
+func WithRequestTimeout(timeout time.Duration) ClientOption {
+	return func(c *ClientConfig) {
+		c.requestTimeout = timeout
+	}
+}
+
 func MakeClient(
 	ctx context.Context,
 	httpAddr string,
@@ -287,9 +314,10 @@ func MakeClient(
 ) (*FeatureFlags, error) {
 	// Initialize config with defaults
 	config := &ClientConfig{
-		syncInterval: defaultSyncInterval,
-		logger:       nil, // Will use a default logger if nil
-		variables:    make([]Variable, 0),
+		syncInterval:   defaultSyncInterval,
+		requestTimeout: defaultRequestTimeout,
+		logger:         nil, // Will use a default logger if nil
+		variables:      make([]Variable, 0),
 	}
 
 	// Apply options
@@ -302,7 +330,14 @@ func MakeClient(
 		config.logger = &defaultLogger{}
 	}
 
-	client := &http.Client{}
+	// Validate and set request timeout
+	if config.requestTimeout <= 0 {
+		config.requestTimeout = defaultRequestTimeout
+	}
+
+	client := &http.Client{
+		Timeout: config.requestTimeout,
+	}
 	flagsMap := make(map[string]FlagState, len(defaults.Flags))
 	flagNames := make([]string, len(defaults.Flags))
 	valuesMap := make(map[string]ValueState, len(defaults.Values))

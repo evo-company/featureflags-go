@@ -23,6 +23,7 @@ The client uses the functional options pattern for flexible configuration. The `
 
 - `WithVariables(variables []Variable)` - Set variables for targeting rules
 - `WithSyncInterval(interval time.Duration)` - Set sync interval (default: 10 seconds)
+- `WithRequestTimeout(timeout time.Duration)` - Set HTTP request timeout (default: 30 seconds). Values <= 0 will use the default timeout to prevent indefinite blocking
 - `WithLogger(logger Logger)` - Set a custom logger (default: no-op logger)
 
 #### Working with Values
@@ -128,6 +129,7 @@ func main() {
   defaults,                   // Default flags and values
   featureflags.WithVariables(variables),
   featureflags.WithSyncInterval(10*time.Second),
+  featureflags.WithRequestTimeout(5*time.Second),
   featureflags.WithLogger(log.Default()),
  )
  if err != nil {
