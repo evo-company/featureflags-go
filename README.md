@@ -15,6 +15,12 @@ To install the package, use `go get`:
 go get github.com/evo-company/featureflags-go
 ```
 
+To install a specific version:
+
+```bash
+go get github.com/evo-company/featureflags-go@v0.0.1
+```
+
 ### Usage
 
 The client uses the functional options pattern for flexible configuration. The `httpAddr`, `project`, and `defaults` parameters are required, while other options are optional.
@@ -31,6 +37,7 @@ The client uses the functional options pattern for flexible configuration. The `
 Values allow you to store configuration settings (strings, integers, etc.) that can be overridden by the server.
 
 **Default Values**: When you initialize the client, you provide default values:
+
 ```go
 defaults := featureflags.Defaults{
     Values: []featureflags.Value{
@@ -45,18 +52,22 @@ defaults := featureflags.Defaults{
 **Retrieving Values**: Two approaches for type-safe value retrieval:
 
 **1. Error-returning getters** (recommended when you need to handle failures):
+
 - `GetValueInt(name string) (int, error)` - Returns error if not found or wrong type
 - `GetValueString(name string) (string, error)` - Returns error if not found or wrong type
 
 **2. Must getters** (recommended when you want guaranteed defaults):
+
 - `MustGetValueInt(name string) int` - Returns value or default, panics if key never defined
 - `MustGetValueString(name string) string` - Returns value or default, panics if key never defined
 
 **Other methods**:
+
 - `GetValue(name string) interface{}` - Returns raw value (requires manual type casting)
 - `IsValueOverridden(name string) bool` - Check if server overrode the default
 
 **Safety guarantees**:
+
 - `GetValue*` methods return errors instead of zero values (preventing dangerous defaults like 0 timeout)
 - `MustGetValue*` methods guarantee a value is returned (either current or default)
 - `MustGetValue*` panics only on programming errors (requesting undefined keys)
@@ -202,3 +213,19 @@ go run example/main.go
 ```bash
 go run example/main.go -host http://localhost:5000
 ```
+
+## Release
+
+Releases are automated via GitHub Actions. When you push a version tag (format `v*.*.*`), the workflow will:
+
+1. Run the full test suite
+2. Create a GitHub Release with auto-generated release notes
+
+**To create a release:**
+
+```bash
+git tag v1.0.0 -a -m "Added better error handling"
+git push origin v1.0.0
+```
+
+Note: Use semantic versioning (e.g., v1.0.0, v0.2.1).
