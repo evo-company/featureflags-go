@@ -1,41 +1,44 @@
 package featureflags
 
-type Conditions struct{}
-
-func LessThan(left, right string) bool {
-	return left < right
-}
-
-func Equal(left string, right string) bool {
-	return left == right
-}
-
+// FlagState stores the state of a feature flag including its evaluation function
 type FlagState struct {
 	Name    string
-	Enabled bool
+	Enabled bool     // default value
+	Proc    FlagProc // compiled condition evaluator (nil if using default)
 }
 
-func (state *State) FlagState(name string) bool {
-	result := false
-	value, foundValue := state.flagState[name]
-
-	if foundValue {
-		result = value.Enabled
+// getFlagState evaluates a flag against a context and returns its state
+func (state *State) getFlagState(name string, ctx map[string]any) bool {
+	flagState, found := state.flagState[name]
+	if !found {
+		return false
 	}
-	return result
+
+	// If we have a proc (conditions from server), use it
+	if flagState.Proc != nil {
+		return flagState.Proc(ctx)
+	}
+
+	// Otherwise return the default/static value
+	return flagState.Enabled
 }
 
-func (flags *FeatureFlags) Get(name string) bool {
+// Get returns the state of a feature flag evaluated against the provided context
+func (flags *FeatureFlags) Get(name string, ctx map[string]any) bool {
 	flags.mu.RLock()
 	defer flags.mu.RUnlock()
-	return flags.state.FlagState(name)
+	return flags.state.getFlagState(name, ctx)
 }
 
+// FlagResponse represents a flag response from the server
 type FlagResponse struct {
-	Name    string `json:"name"`
-	Enabled bool   `json:"enabled"`
+	Name       string      `json:"name"`
+	Enabled    bool        `json:"enabled"`
+	Overridden bool        `json:"overridden"`
+	Conditions []Condition `json:"conditions"`
 }
 
+// Flag represents a flag definition with default value
 type Flag struct {
 	Name    string `json:"name"`
 	Enabled bool   `json:"enabled"`

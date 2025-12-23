@@ -51,5 +51,9 @@ func main() {
 	if err != nil {
 		panic(err.Error())
 	}
-	log.Printf("TEST_FLAG: %v", flags.Get("TEST_FLAG"))
+	// Context with user information for condition evaluation
+	ctx := map[string]any{
+		"user.id": 123,
+	}
+	log.Printf("TEST_FLAG: %v", flags.Get("TEST_FLAG", ctx))
 }

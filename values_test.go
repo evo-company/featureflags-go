@@ -15,23 +15,62 @@ func TestGetValue(t *testing.T) {
 	}
 
 	t.Run("get string value", func(t *testing.T) {
-		val := flags.GetValue("string_value")
+		val := flags.GetValue("string_value", nil)
 		if strVal, ok := val.(string); !ok || strVal != "hello" {
 			t.Errorf("Expected 'hello', got %v", val)
 		}
 	})
 
 	t.Run("get int value", func(t *testing.T) {
-		val := flags.GetValue("int_value")
+		val := flags.GetValue("int_value", nil)
 		if intVal, ok := val.(int); !ok || intVal != 42 {
 			t.Errorf("Expected 42, got %v", val)
 		}
 	})
 
 	t.Run("get non-existent value", func(t *testing.T) {
-		val := flags.GetValue("non_existent")
+		val := flags.GetValue("non_existent", nil)
 		if val != nil {
 			t.Errorf("Expected nil, got %v", val)
+		}
+	})
+}
+
+// Test GetValue with conditions
+func TestGetValueWithConditions(t *testing.T) {
+	flags := &FeatureFlags{
+		state: State{
+			valueState: map[string]ValueState{
+				"conditional_value": {
+					Name:         "conditional_value",
+					Value:        "default",
+					DefaultValue: "default",
+					IsOverridden: true,
+					Proc: func(ctx map[string]any) any {
+						// Simulates: return "premium" when user.tier == "premium"
+						if tier, ok := ctx["user.tier"]; ok && tier == "premium" {
+							return "premium_value"
+						}
+						return "default"
+					},
+				},
+			},
+		},
+	}
+
+	t.Run("value override for matching context", func(t *testing.T) {
+		ctx := map[string]any{"user.tier": "premium"}
+		val := flags.GetValue("conditional_value", ctx)
+		if val != "premium_value" {
+			t.Errorf("Expected 'premium_value', got %v", val)
+		}
+	})
+
+	t.Run("default value for non-matching context", func(t *testing.T) {
+		ctx := map[string]any{"user.tier": "free"}
+		val := flags.GetValue("conditional_value", ctx)
+		if val != "default" {
+			t.Errorf("Expected 'default', got %v", val)
 		}
 	})
 }
@@ -52,7 +91,7 @@ func TestGetValueIntAndString(t *testing.T) {
 	}
 
 	t.Run("GetValueInt - success with int", func(t *testing.T) {
-		val, err := flags.GetValueInt("int_value")
+		val, err := flags.GetValueInt("int_value", nil)
 		if err != nil {
 			t.Errorf("Unexpected error: %v", err)
 		}
@@ -62,7 +101,7 @@ func TestGetValueIntAndString(t *testing.T) {
 	})
 
 	t.Run("GetValueInt - success with float64", func(t *testing.T) {
-		val, err := flags.GetValueInt("float_value")
+		val, err := flags.GetValueInt("float_value", nil)
 		if err != nil {
 			t.Errorf("Unexpected error: %v", err)
 		}
@@ -72,21 +111,21 @@ func TestGetValueIntAndString(t *testing.T) {
 	})
 
 	t.Run("GetValueInt - error on wrong type", func(t *testing.T) {
-		_, err := flags.GetValueInt("string_value")
+		_, err := flags.GetValueInt("string_value", nil)
 		if err == nil {
 			t.Error("Expected error for wrong type")
 		}
 	})
 
 	t.Run("GetValueInt - error on non-existent", func(t *testing.T) {
-		_, err := flags.GetValueInt("non_existent")
+		_, err := flags.GetValueInt("non_existent", nil)
 		if err == nil {
 			t.Error("Expected error for non-existent value")
 		}
 	})
 
 	t.Run("GetValueString - success", func(t *testing.T) {
-		val, err := flags.GetValueString("string_value")
+		val, err := flags.GetValueString("string_value", nil)
 		if err != nil {
 			t.Errorf("Unexpected error: %v", err)
 		}
@@ -96,14 +135,14 @@ func TestGetValueIntAndString(t *testing.T) {
 	})
 
 	t.Run("GetValueString - error on wrong type", func(t *testing.T) {
-		_, err := flags.GetValueString("int_value")
+		_, err := flags.GetValueString("int_value", nil)
 		if err == nil {
 			t.Error("Expected error for wrong type")
 		}
 	})
 
 	t.Run("GetValueString - error on non-existent", func(t *testing.T) {
-		_, err := flags.GetValueString("non_existent")
+		_, err := flags.GetValueString("non_existent", nil)
 		if err == nil {
 			t.Error("Expected error for non-existent value")
 		}
@@ -127,21 +166,21 @@ func TestMustGetValueIntAndString(t *testing.T) {
 	}
 
 	t.Run("MustGetValueInt - success with int", func(t *testing.T) {
-		val := flags.MustGetValueInt("int_value")
+		val := flags.MustGetValueInt("int_value", nil)
 		if val != 42 {
 			t.Errorf("Expected 42, got %d", val)
 		}
 	})
 
 	t.Run("MustGetValueInt - success with float64", func(t *testing.T) {
-		val := flags.MustGetValueInt("float_value")
+		val := flags.MustGetValueInt("float_value", nil)
 		if val != 3 {
 			t.Errorf("Expected 3, got %d", val)
 		}
 	})
 
 	t.Run("MustGetValueInt - fallback to default on wrong type", func(t *testing.T) {
-		val := flags.MustGetValueInt("wrong_type_int")
+		val := flags.MustGetValueInt("wrong_type_int", nil)
 		if val != 99 {
 			t.Errorf("Expected default 99, got %d", val)
 		}
@@ -153,18 +192,18 @@ func TestMustGetValueIntAndString(t *testing.T) {
 				t.Error("Expected panic for non-existent value")
 			}
 		}()
-		flags.MustGetValueInt("non_existent")
+		flags.MustGetValueInt("non_existent", nil)
 	})
 
 	t.Run("MustGetValueString - success", func(t *testing.T) {
-		val := flags.MustGetValueString("string_value")
+		val := flags.MustGetValueString("string_value", nil)
 		if val != "hello" {
 			t.Errorf("Expected 'hello', got %s", val)
 		}
 	})
 
 	t.Run("MustGetValueString - fallback to default on wrong type", func(t *testing.T) {
-		val := flags.MustGetValueString("wrong_type_str")
+		val := flags.MustGetValueString("wrong_type_str", nil)
 		if val != "fallback" {
 			t.Errorf("Expected default 'fallback', got %s", val)
 		}
@@ -176,7 +215,7 @@ func TestMustGetValueIntAndString(t *testing.T) {
 				t.Error("Expected panic for non-existent value")
 			}
 		}()
-		flags.MustGetValueString("non_existent")
+		flags.MustGetValueString("non_existent", nil)
 	})
 }
 
