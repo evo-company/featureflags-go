@@ -31,25 +31,40 @@ func (state *State) Update(version int, flags []FlagResponse, values []ValueResp
 
 	state.version = version
 	for _, flag := range flags {
+		// Preserve the default enabled value if it exists
+		existingState, exists := state.flagState[flag.Name]
+		defaultEnabled := false
+		if exists {
+			defaultEnabled = existingState.Enabled
+		}
+
+		// Compile conditions into a proc function
+		proc := flagProc(flag)
+
 		state.flagState[flag.Name] = FlagState{
 			Name:    flag.Name,
-			Enabled: flag.Enabled,
+			Enabled: defaultEnabled,
+			Proc:    proc,
 		}
 	}
 
 	for _, value := range values {
 		// Preserve the default value if it exists
 		existingState, exists := state.valueState[value.Name]
-		defaultVal := interface{}(nil)
+		defaultVal := value.ValueDefault
 		if exists {
 			defaultVal = existingState.DefaultValue
 		}
 
+		// Compile conditions into a proc function
+		proc := valueProc(value)
+
 		state.valueState[value.Name] = ValueState{
 			Name:         value.Name,
-			Value:        value.Value,
+			Value:        value.ValueOverride,
 			DefaultValue: defaultVal,
-			IsOverridden: true, // Value came from server
+			IsOverridden: value.Overridden,
+			Proc:         proc,
 		}
 	}
 }

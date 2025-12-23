@@ -2,35 +2,49 @@ package featureflags
 
 import "fmt"
 
+// ValueState stores the state of a feature value including its evaluation function
 type ValueState struct {
 	Name         string
-	Value        interface{} // current value (from server or default)
-	DefaultValue interface{} // original default value
-	IsOverridden bool        // true if value was set by server
+	Value        any       // current value (from server or default)
+	DefaultValue any       // original default value
+	IsOverridden bool      // true if value was set by server
+	Proc         ValueProc // compiled condition evaluator (nil if using default)
 }
 
-func (state *State) ValueState(name string) interface{} {
-	value, foundValue := state.valueState[name]
-
-	if foundValue {
-		return value.Value
+// getValueState evaluates a value against a context and returns its value
+func (state *State) getValueState(name string, ctx map[string]any) any {
+	valueState, found := state.valueState[name]
+	if !found {
+		return nil
 	}
-	return nil
+
+	// If we have a proc (conditions from server), use it
+	if valueState.Proc != nil {
+		return valueState.Proc(ctx)
+	}
+
+	// Otherwise return the default/static value
+	return valueState.Value
 }
 
-func (flags *FeatureFlags) GetValue(name string) interface{} {
+// GetValue returns the value evaluated against the provided context
+func (flags *FeatureFlags) GetValue(name string, opts ...ContextOption) any {
 	flags.mu.RLock()
 	defer flags.mu.RUnlock()
-	return flags.state.ValueState(name)
+
+	ctx := flags.initContext(opts...)
+	return flags.state.getValueState(name, ctx)
 }
 
 // GetValueInt returns the value as an int. Returns an error if the value doesn't exist
 // or cannot be cast to int.
-func (flags *FeatureFlags) GetValueInt(name string) (int, error) {
+func (flags *FeatureFlags) GetValueInt(name string, opts ...ContextOption) (int, error) {
 	flags.mu.RLock()
 	defer flags.mu.RUnlock()
 
-	value := flags.state.ValueState(name)
+	ctx := flags.initContext(opts...)
+	value := flags.state.getValueState(name, ctx)
+
 	if value == nil {
 		return 0, fmt.Errorf("value %s not found", name)
 	}
@@ -51,7 +65,7 @@ func (flags *FeatureFlags) GetValueInt(name string) (int, error) {
 // MustGetValueInt returns the value as an int. If the value cannot be cast to int,
 // it returns the default value. Panics if the value key doesn't exist in the map
 // (which indicates a programming error - asking for a value that was never defined).
-func (flags *FeatureFlags) MustGetValueInt(name string) int {
+func (flags *FeatureFlags) MustGetValueInt(name string, opts ...ContextOption) int {
 	flags.mu.RLock()
 	defer flags.mu.RUnlock()
 
@@ -60,7 +74,8 @@ func (flags *FeatureFlags) MustGetValueInt(name string) int {
 		panic(fmt.Sprintf("value %s was never defined in defaults - this is a programming error", name))
 	}
 
-	value := valueState.Value
+	ctx := flags.initContext(opts...)
+	value := flags.state.getValueState(name, ctx)
 
 	// Try to cast current value to int
 	if intVal, ok := value.(int); ok {
@@ -84,11 +99,12 @@ func (flags *FeatureFlags) MustGetValueInt(name string) int {
 
 // GetValueString returns the value as a string. Returns an error if the value doesn't exist
 // or cannot be cast to string.
-func (flags *FeatureFlags) GetValueString(name string) (string, error) {
+func (flags *FeatureFlags) GetValueString(name string, opts ...ContextOption) (string, error) {
 	flags.mu.RLock()
 	defer flags.mu.RUnlock()
 
-	value := flags.state.ValueState(name)
+	ctx := flags.initContext(opts...)
+	value := flags.state.getValueState(name, ctx)
 	if value == nil {
 		return "", fmt.Errorf("value %s not found", name)
 	}
@@ -104,7 +120,7 @@ func (flags *FeatureFlags) GetValueString(name string) (string, error) {
 // MustGetValueString returns the value as a string. If the value cannot be cast to string,
 // it returns the default value. Panics if the value key doesn't exist in the map
 // (which indicates a programming error - asking for a value that was never defined).
-func (flags *FeatureFlags) MustGetValueString(name string) string {
+func (flags *FeatureFlags) MustGetValueString(name string, opts ...ContextOption) string {
 	flags.mu.RLock()
 	defer flags.mu.RUnlock()
 
@@ -113,7 +129,8 @@ func (flags *FeatureFlags) MustGetValueString(name string) string {
 		panic(fmt.Sprintf("value %s was never defined in defaults - this is a programming error", name))
 	}
 
-	value := valueState.Value
+	ctx := flags.initContext(opts...)
+	value := flags.state.getValueState(name, ctx)
 
 	// Try to cast current value to string
 	if strVal, ok := value.(string); ok {
@@ -141,17 +158,24 @@ func (flags *FeatureFlags) IsValueOverridden(name string) bool {
 	return false
 }
 
+// ValueResponse represents a value response from the server
 type ValueResponse struct {
-	Name  string      `json:"name"`
-	Value interface{} `json:"value"` // Using interface{} for Any type
+	Name          string           `json:"name"`
+	Enabled       bool             `json:"enabled"`
+	Overridden    bool             `json:"overridden"`
+	ValueDefault  any              `json:"value_default"`
+	ValueOverride any              `json:"value_override"`
+	Conditions    []ValueCondition `json:"conditions"`
 }
 
+// ValueInput represents a value input for the load request
 type ValueInput struct {
-	Name  string      `json:"name"`
-	Value interface{} `json:"value"`
+	Name  string `json:"name"`
+	Value any    `json:"value"`
 }
 
+// Value represents a value definition with default
 type Value struct {
-	Name  string      `json:"name"`
-	Value interface{} `json:"value"` // Using interface{} for Any type
+	Name  string `json:"name"`
+	Value any    `json:"value"`
 }

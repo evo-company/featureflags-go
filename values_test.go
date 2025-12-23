@@ -36,6 +36,45 @@ func TestGetValue(t *testing.T) {
 	})
 }
 
+// Test GetValue with conditions
+func TestGetValueWithConditions(t *testing.T) {
+	flags := &FeatureFlags{
+		state: State{
+			valueState: map[string]ValueState{
+				"conditional_value": {
+					Name:         "conditional_value",
+					Value:        "default",
+					DefaultValue: "default",
+					IsOverridden: true,
+					Proc: func(ctx map[string]any) any {
+						// Simulates: return "premium" when user.tier == "premium"
+						if tier, ok := ctx["user.tier"]; ok && tier == "premium" {
+							return "premium_value"
+						}
+						return "default"
+					},
+				},
+			},
+		},
+	}
+
+	t.Run("value override for matching context", func(t *testing.T) {
+		ctx := map[string]any{"user.tier": "premium"}
+		val := flags.GetValue("conditional_value", WithContext(ctx))
+		if val != "premium_value" {
+			t.Errorf("Expected 'premium_value', got %v", val)
+		}
+	})
+
+	t.Run("default value for non-matching context", func(t *testing.T) {
+		ctx := map[string]any{"user.tier": "free"}
+		val := flags.GetValue("conditional_value", WithContext(ctx))
+		if val != "default" {
+			t.Errorf("Expected 'default', got %v", val)
+		}
+	})
+}
+
 // Test GetValueInt and GetValueString
 func TestGetValueIntAndString(t *testing.T) {
 	logger := &testLogger{}

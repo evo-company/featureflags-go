@@ -53,10 +53,10 @@ func TestLoadRequest(t *testing.T) {
 			resp := LoadFlagsResponse{
 				Version: 1,
 				Flags: []FlagResponse{
-					{Name: "test_flag", Enabled: true},
+					{Name: "test_flag", Enabled: true, Overridden: true},
 				},
 				Values: []ValueResponse{
-					{Name: "test_value", Value: "hello"},
+					{Name: "test_value", Enabled: true, Overridden: true, ValueOverride: "hello"},
 				},
 			}
 			w.Header().Set("Content-Type", "application/json")
@@ -89,6 +89,7 @@ func TestLoadRequest(t *testing.T) {
 		if resp.Version != 1 {
 			t.Errorf("Expected version 1, got %d", resp.Version)
 		}
+		// Verify flags
 		if len(resp.Flags) != 1 {
 			t.Errorf("Expected 1 flag, got %d", len(resp.Flags))
 		}
@@ -97,6 +98,24 @@ func TestLoadRequest(t *testing.T) {
 		}
 		if !resp.Flags[0].Enabled {
 			t.Error("Expected flag to be enabled")
+		}
+
+		// Verify values
+		if len(resp.Values) != 1 {
+			t.Errorf("Expected 1 value, got %d", len(resp.Flags))
+		}
+		if resp.Values[0].Name != "test_value" {
+			t.Errorf("Expected value name 'test_flag', got %s", resp.Flags[0].Name)
+		}
+		if !resp.Values[0].Enabled {
+			t.Error("Expected value to be enabled")
+		}
+		if !resp.Values[0].Overridden {
+			t.Error("Expected value to be overridden")
+		}
+
+		if resp.Values[0].ValueOverride != "hello" {
+			t.Error("Expected value to have overridden value 'hello'")
 		}
 	})
 
@@ -130,11 +149,11 @@ func TestLoad(t *testing.T) {
 		resp := LoadFlagsResponse{
 			Version: 2,
 			Flags: []FlagResponse{
-				{Name: "feature_a", Enabled: true},
-				{Name: "feature_b", Enabled: false},
+				{Name: "feature_a", Enabled: true, Overridden: true},
+				{Name: "feature_b", Enabled: false, Overridden: true},
 			},
 			Values: []ValueResponse{
-				{Name: "timeout", Value: float64(30)},
+				{Name: "timeout", Enabled: true, Overridden: true, ValueOverride: float64(30)},
 			},
 		}
 		w.Header().Set("Content-Type", "application/json")
@@ -165,10 +184,10 @@ func TestLoad(t *testing.T) {
 	if flags.state.version != 2 {
 		t.Errorf("Expected version 2, got %d", flags.state.version)
 	}
-	if !flags.state.FlagState("feature_a") {
+	if !flags.state.getFlagState("feature_a", nil) {
 		t.Error("Expected feature_a to be enabled")
 	}
-	if flags.state.FlagState("feature_b") {
+	if flags.state.getFlagState("feature_b", nil) {
 		t.Error("Expected feature_b to be disabled")
 	}
 }
@@ -184,10 +203,10 @@ func TestSyncRequest(t *testing.T) {
 			resp := SyncFlagsResponse{
 				Version: 3,
 				Flags: []FlagResponse{
-					{Name: "sync_flag", Enabled: true},
+					{Name: "sync_flag", Enabled: true, Overridden: true},
 				},
 				Values: []ValueResponse{
-					{Name: "sync_value", Value: 42.0},
+					{Name: "sync_value", Enabled: true, Overridden: true, ValueOverride: 42.0},
 				},
 			}
 			w.Header().Set("Content-Type", "application/json")
@@ -226,10 +245,10 @@ func TestSync(t *testing.T) {
 		resp := SyncFlagsResponse{
 			Version: 5,
 			Flags: []FlagResponse{
-				{Name: "updated_flag", Enabled: false},
+				{Name: "updated_flag", Enabled: false, Overridden: true},
 			},
 			Values: []ValueResponse{
-				{Name: "updated_value", Value: "new_value"},
+				{Name: "updated_value", Enabled: true, Overridden: true, ValueOverride: "new_value"},
 			},
 		}
 		w.Header().Set("Content-Type", "application/json")
@@ -267,10 +286,10 @@ func TestMakeClient(t *testing.T) {
 		resp := LoadFlagsResponse{
 			Version: 1,
 			Flags: []FlagResponse{
-				{Name: "init_flag", Enabled: true},
+				{Name: "init_flag", Enabled: true, Overridden: true},
 			},
 			Values: []ValueResponse{
-				{Name: "init_value", Value: 100.0},
+				{Name: "init_value", Enabled: true, Overridden: true, ValueOverride: 100.0},
 			},
 		}
 		w.Header().Set("Content-Type", "application/json")
@@ -297,7 +316,6 @@ func TestMakeClient(t *testing.T) {
 		WithLogger(logger),
 		WithSyncInterval(10*time.Second),
 	)
-
 	if err != nil {
 		t.Fatalf("MakeClient failed: %v", err)
 	}
@@ -332,9 +350,9 @@ func TestStateUpdate(t *testing.T) {
 
 	// Update with new values from server
 	state.Update(2, []FlagResponse{
-		{Name: "test_flag", Enabled: true},
+		{Name: "test_flag", Enabled: true, Overridden: true},
 	}, []ValueResponse{
-		{Name: "test_value", Value: 20.0},
+		{Name: "test_value", Enabled: true, Overridden: true, ValueOverride: 20.0, ValueDefault: 10},
 	})
 
 	// Verify version updated
@@ -342,8 +360,8 @@ func TestStateUpdate(t *testing.T) {
 		t.Errorf("Expected version 2, got %d", state.version)
 	}
 
-	// Verify flag updated
-	if !state.flagState["test_flag"].Enabled {
+	// Verify flag updated - use getFlagState to check evaluation
+	if !state.getFlagState("test_flag", nil) {
 		t.Error("Expected test_flag to be enabled")
 	}
 
@@ -357,5 +375,80 @@ func TestStateUpdate(t *testing.T) {
 	}
 	if !valueState.IsOverridden {
 		t.Error("Expected IsOverridden to be true")
+	}
+}
+
+// Test State.Update with conditions
+func TestStateUpdateWithConditions(t *testing.T) {
+	state := State{
+		version: 1,
+		flagState: map[string]FlagState{
+			"conditional_flag": {Name: "conditional_flag", Enabled: false},
+		},
+		valueState: map[string]ValueState{},
+	}
+
+	// Update with a flag that has conditions
+	state.Update(2, []FlagResponse{
+		{
+			Name:       "conditional_flag",
+			Enabled:    true,
+			Overridden: true,
+			Conditions: []Condition{
+				{
+					Checks: []Check{
+						{
+							Operator: OpEqual,
+							Variable: CheckVariable{Name: "user.id", Type: TypeNumber},
+							Value:    float64(123),
+						},
+					},
+				},
+			},
+		},
+	}, []ValueResponse{})
+
+	// Verify flag is enabled for matching context
+	ctx := map[string]any{"user.id": float64(123)}
+	if !state.getFlagState("conditional_flag", ctx) {
+		t.Error("Expected conditional_flag to be true for user.id=123")
+	}
+
+	// Verify flag is disabled for non-matching context
+	ctx = map[string]any{"user.id": float64(456)}
+	if state.getFlagState("conditional_flag", ctx) {
+		t.Error("Expected conditional_flag to be false for user.id=456")
+	}
+}
+
+func TestMustGetValueStringUsesServerDefaultForNewValue(t *testing.T) {
+	flags := FeatureFlags{
+		logger: &defaultLogger{},
+		state: State{
+			version:    1,
+			flagState:  map[string]FlagState{},
+			valueState: map[string]ValueState{},
+		},
+	}
+
+	flags.state.Update(2, []FlagResponse{}, []ValueResponse{
+		{
+			Name:          "new_value",
+			Enabled:       true,
+			Overridden:    false,
+			ValueOverride: 123,
+			ValueDefault:  "fallback",
+		},
+	})
+
+	defer func() {
+		if r := recover(); r != nil {
+			t.Fatalf("unexpected panic: %v", r)
+		}
+	}()
+
+	val := flags.MustGetValueString("new_value")
+	if val != "fallback" {
+		t.Fatalf("expected fallback default, got %v", val)
 	}
 }
