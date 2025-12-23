@@ -51,7 +51,7 @@ func (state *State) Update(version int, flags []FlagResponse, values []ValueResp
 	for _, value := range values {
 		// Preserve the default value if it exists
 		existingState, exists := state.valueState[value.Name]
-		defaultVal := any(nil)
+		defaultVal := value.ValueDefault
 		if exists {
 			defaultVal = existingState.DefaultValue
 		}

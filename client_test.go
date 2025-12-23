@@ -326,7 +326,7 @@ func TestMakeClient(t *testing.T) {
 	}
 
 	// Verify defaults were set correctly
-	if !client.Get("init_flag", nil) {
+	if !client.Get("init_flag") {
 		t.Error("Expected init_flag to be enabled (overridden by server)")
 	}
 
@@ -418,5 +418,37 @@ func TestStateUpdateWithConditions(t *testing.T) {
 	ctx = map[string]any{"user.id": float64(456)}
 	if state.getFlagState("conditional_flag", ctx) {
 		t.Error("Expected conditional_flag to be false for user.id=456")
+	}
+}
+
+func TestMustGetValueStringUsesServerDefaultForNewValue(t *testing.T) {
+	flags := FeatureFlags{
+		logger: &defaultLogger{},
+		state: State{
+			version:    1,
+			flagState:  map[string]FlagState{},
+			valueState: map[string]ValueState{},
+		},
+	}
+
+	flags.state.Update(2, []FlagResponse{}, []ValueResponse{
+		{
+			Name:          "new_value",
+			Enabled:       true,
+			Overridden:    false,
+			ValueOverride: 123,
+			ValueDefault:  "fallback",
+		},
+	})
+
+	defer func() {
+		if r := recover(); r != nil {
+			t.Fatalf("unexpected panic: %v", r)
+		}
+	}()
+
+	val := flags.MustGetValueString("new_value")
+	if val != "fallback" {
+		t.Fatalf("expected fallback default, got %v", val)
 	}
 }

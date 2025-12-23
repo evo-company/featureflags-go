@@ -73,6 +73,48 @@ defaults := featureflags.Defaults{
 - `MustGetValue*` panics only on programming errors (requesting undefined keys)
 - Type mismatches are logged and fall back to defaults in Must* versions
 
+#### Working with Context and Conditions
+
+The server can define **conditions** for flags and values based on context variables (like user ID, country, tier, etc.). When retrieving flags or values, you can choose whether to evaluate these conditions:
+
+**Without Context** (simple mode):
+
+- Flags: Only the enabled/disabled state from the server is used
+- Values: Only the override value from the server is used
+- Server conditions are **ignored**
+
+**With Context** (conditional mode):
+
+- Flags: Server conditions are evaluated against your context
+- Values: Server conditions are evaluated to determine which value to return
+- Use `featureflags.WithContext(ctx)` to pass context data
+
+##### Example
+
+```go
+// 1. Simple retrieval without context - ignores server conditions
+enabled := client.Get("premium_feature")
+// Returns: true/false based only on server's enabled/disabled state
+
+welcomeMsg := client.MustGetValueString("welcome_message")
+// Returns: The override value from server (or default if not overridden)
+
+// 2. Conditional retrieval with context - evaluates server conditions
+ctx := map[string]any{
+    "user.id":      12345,
+    "user.tier":    "premium",
+    "user.country": "US",
+}
+
+// Check if feature is enabled for this specific user context
+enabled := client.Get("premium_feature", featureflags.WithContext(ctx))
+// Returns: Evaluates server conditions like "user.tier == premium"
+
+// Get personalized welcome message based on user context
+welcomeMsg := client.MustGetValueString("welcome_message", featureflags.WithContext(ctx))
+// Returns: Different values based on conditions (e.g., different message for premium users)
+```
+
 #### Quick Start
 
 Minimal example with only required parameters:
@@ -147,7 +189,7 @@ func main() {
   log.Fatalf("Failed to create feature flags client: %v", err)
  }
 
- // 4. Get flag state
+ // 4. Get flag state (without context - uses simple enabled/disabled state)
  if flagsClient.Get("TEST_FLAG_ENABLED_BY_DEFAULT") {
   println("TEST_FLAG_ENABLED_BY_DEFAULT is enabled!")
  } else {
@@ -158,6 +200,19 @@ func main() {
   println("NON_EXISTENT_FLAG is enabled (this shouldn't happen unless defaulted elsewhere).")
  } else {
   println("NON_EXISTENT_FLAG is disabled (as expected).")
+ }
+
+ // 4b. Get flag state with context - evaluates server conditions
+ userContext := map[string]any{
+  "user.id":      12345,
+  "user.tier":    "premium",
+  "user.country": "US",
+ }
+
+ if flagsClient.Get("PREMIUM_ONLY_FEATURE", featureflags.WithContext(userContext)) {
+  println("PREMIUM_ONLY_FEATURE is enabled for this user!")
+ } else {
+  println("PREMIUM_ONLY_FEATURE is disabled for this user.")
  }
 
  // 5. Get value state
@@ -190,6 +245,15 @@ func main() {
  if msg, ok := rawValue.(string); ok {
   println("Raw value:", msg)
  }
+
+ // 6. Get value with context - returns different values based on conditions
+ personalizedMessage := flagsClient.MustGetValueString("WELCOME_MESSAGE", featureflags.WithContext(userContext))
+ println("Personalized Welcome:", personalizedMessage)
+ // Server might return different messages based on user.tier, user.country, etc.
+
+ maxConnections := flagsClient.MustGetValueInt("MAX_CONNECTIONS", featureflags.WithContext(userContext))
+ println("Max Connections for this user:", maxConnections)
+ // Server might return higher limits for premium users
 
  // The client will continue to sync flags in a background loop.
  // In a real application, you might want to keep the main goroutine alive

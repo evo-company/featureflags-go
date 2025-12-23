@@ -28,19 +28,23 @@ func (state *State) getValueState(name string, ctx map[string]any) any {
 }
 
 // GetValue returns the value evaluated against the provided context
-func (flags *FeatureFlags) GetValue(name string, ctx map[string]any) any {
+func (flags *FeatureFlags) GetValue(name string, opts ...ContextOption) any {
 	flags.mu.RLock()
 	defer flags.mu.RUnlock()
+
+	ctx := flags.initContext(opts...)
 	return flags.state.getValueState(name, ctx)
 }
 
 // GetValueInt returns the value as an int. Returns an error if the value doesn't exist
 // or cannot be cast to int.
-func (flags *FeatureFlags) GetValueInt(name string, ctx map[string]any) (int, error) {
+func (flags *FeatureFlags) GetValueInt(name string, opts ...ContextOption) (int, error) {
 	flags.mu.RLock()
 	defer flags.mu.RUnlock()
 
+	ctx := flags.initContext(opts...)
 	value := flags.state.getValueState(name, ctx)
+
 	if value == nil {
 		return 0, fmt.Errorf("value %s not found", name)
 	}
@@ -61,7 +65,7 @@ func (flags *FeatureFlags) GetValueInt(name string, ctx map[string]any) (int, er
 // MustGetValueInt returns the value as an int. If the value cannot be cast to int,
 // it returns the default value. Panics if the value key doesn't exist in the map
 // (which indicates a programming error - asking for a value that was never defined).
-func (flags *FeatureFlags) MustGetValueInt(name string, ctx map[string]any) int {
+func (flags *FeatureFlags) MustGetValueInt(name string, opts ...ContextOption) int {
 	flags.mu.RLock()
 	defer flags.mu.RUnlock()
 
@@ -70,6 +74,7 @@ func (flags *FeatureFlags) MustGetValueInt(name string, ctx map[string]any) int 
 		panic(fmt.Sprintf("value %s was never defined in defaults - this is a programming error", name))
 	}
 
+	ctx := flags.initContext(opts...)
 	value := flags.state.getValueState(name, ctx)
 
 	// Try to cast current value to int
@@ -94,10 +99,11 @@ func (flags *FeatureFlags) MustGetValueInt(name string, ctx map[string]any) int 
 
 // GetValueString returns the value as a string. Returns an error if the value doesn't exist
 // or cannot be cast to string.
-func (flags *FeatureFlags) GetValueString(name string, ctx map[string]any) (string, error) {
+func (flags *FeatureFlags) GetValueString(name string, opts ...ContextOption) (string, error) {
 	flags.mu.RLock()
 	defer flags.mu.RUnlock()
 
+	ctx := flags.initContext(opts...)
 	value := flags.state.getValueState(name, ctx)
 	if value == nil {
 		return "", fmt.Errorf("value %s not found", name)
@@ -114,7 +120,7 @@ func (flags *FeatureFlags) GetValueString(name string, ctx map[string]any) (stri
 // MustGetValueString returns the value as a string. If the value cannot be cast to string,
 // it returns the default value. Panics if the value key doesn't exist in the map
 // (which indicates a programming error - asking for a value that was never defined).
-func (flags *FeatureFlags) MustGetValueString(name string, ctx map[string]any) string {
+func (flags *FeatureFlags) MustGetValueString(name string, opts ...ContextOption) string {
 	flags.mu.RLock()
 	defer flags.mu.RUnlock()
 
@@ -123,6 +129,7 @@ func (flags *FeatureFlags) MustGetValueString(name string, ctx map[string]any) s
 		panic(fmt.Sprintf("value %s was never defined in defaults - this is a programming error", name))
 	}
 
+	ctx := flags.initContext(opts...)
 	value := flags.state.getValueState(name, ctx)
 
 	// Try to cast current value to string

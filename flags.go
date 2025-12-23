@@ -24,10 +24,19 @@ func (state *State) getFlagState(name string, ctx map[string]any) bool {
 }
 
 // Get returns the state of a feature flag evaluated against the provided context
-func (flags *FeatureFlags) Get(name string, ctx map[string]any) bool {
+func (flags *FeatureFlags) Get(name string, opts ...ContextOption) bool {
 	flags.mu.RLock()
 	defer flags.mu.RUnlock()
+	ctx := flags.initContext(opts...)
 	return flags.state.getFlagState(name, ctx)
+}
+
+func (flags *FeatureFlags) initContext(opts ...ContextOption) map[string]any {
+	ctx := &ContextConfig{}
+	for _, opt := range opts {
+		opt(ctx)
+	}
+	return *ctx
 }
 
 // FlagResponse represents a flag response from the server

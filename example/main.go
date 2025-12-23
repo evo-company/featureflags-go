@@ -17,16 +17,19 @@ type (
 
 const TypeNumber = featureflags.TypeNumber
 
-var SomeFlag = Flag{"some_flag", false}
+var (
+	SomeFlag       = Flag{"some_flag", false}
+	UserIdVariable = Variable{Name: "user.id", Type: TypeNumber}
+)
+
+var variables = []Variable{
+	UserIdVariable,
+}
 
 var defaults = Defaults{
 	Flags: []Flag{
 		SomeFlag,
 	},
-}
-
-var variables = []Variable{
-	{Name: "user.id", Type: TypeNumber},
 }
 
 func main() {
@@ -53,7 +56,8 @@ func main() {
 	}
 	// Context with user information for condition evaluation
 	ctx := map[string]any{
-		"user.id": 123,
+		UserIdVariable.Name: 123,
 	}
-	log.Printf("TEST_FLAG: %v", flags.Get("TEST_FLAG", ctx))
+
+	log.Printf("TEST_FLAG: %v", flags.Get(SomeFlag.Name, featureflags.WithContext(ctx)))
 }

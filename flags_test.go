@@ -14,19 +14,19 @@ func TestGet(t *testing.T) {
 	}
 
 	t.Run("get enabled flag", func(t *testing.T) {
-		if !flags.Get("enabled_flag", nil) {
+		if !flags.Get("enabled_flag") {
 			t.Error("Expected enabled_flag to be true")
 		}
 	})
 
 	t.Run("get disabled flag", func(t *testing.T) {
-		if flags.Get("disabled_flag", nil) {
+		if flags.Get("disabled_flag") {
 			t.Error("Expected disabled_flag to be false")
 		}
 	})
 
 	t.Run("get non-existent flag", func(t *testing.T) {
-		if flags.Get("non_existent", nil) {
+		if flags.Get("non_existent") {
 			t.Error("Expected non_existent flag to be false")
 		}
 	})
@@ -55,27 +55,27 @@ func TestGetWithConditions(t *testing.T) {
 
 	t.Run("flag enabled for matching context", func(t *testing.T) {
 		ctx := map[string]any{"user.id": 123}
-		if !flags.Get("conditional_flag", ctx) {
+		if !flags.Get("conditional_flag", WithContext(ctx)) {
 			t.Error("Expected conditional_flag to be true for user.id=123")
 		}
 	})
 
 	t.Run("flag disabled for non-matching context", func(t *testing.T) {
 		ctx := map[string]any{"user.id": 456}
-		if flags.Get("conditional_flag", ctx) {
+		if flags.Get("conditional_flag", WithContext(ctx)) {
 			t.Error("Expected conditional_flag to be false for user.id=456")
 		}
 	})
 
 	t.Run("flag disabled for missing context variable", func(t *testing.T) {
 		ctx := map[string]any{}
-		if flags.Get("conditional_flag", ctx) {
+		if flags.Get("conditional_flag", WithContext(ctx)) {
 			t.Error("Expected conditional_flag to be false when user.id is missing")
 		}
 	})
 
 	t.Run("flag disabled for nil context", func(t *testing.T) {
-		if flags.Get("conditional_flag", nil) {
+		if flags.Get("conditional_flag") {
 			t.Error("Expected conditional_flag to be false for nil context")
 		}
 	})
